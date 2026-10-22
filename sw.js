@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weekend-warrior-pwa-v1';
+const CACHE_NAME = 'weekend-warrior-pwa-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,12 +36,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Never cache live Google Apps Script or ESPN API calls
-  if (
-    url.hostname.includes('script.google.com') ||
-    url.hostname.includes('googleusercontent.com') ||
-    url.hostname.includes('espn.com')
-  ) {
+  // Only handle same-origin requests; let browser handle cross-origin APIs/fonts directly
+  if (url.origin !== self.location.origin) {
     return;
   }
 
@@ -57,14 +53,14 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() =>
-        caches.match(request).then((cached) => {
-          if (cached) return cached;
-          if (request.mode === 'navigate') {
-            return caches.match('./index.html');
-          }
-          return undefined;
-        })
-      )
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === 'navigate') {
+          const fallbackNav = await caches.match('./index.html') || await caches.match('./');
+          if (fallbackNav) return fallbackNav;
+        }
+        return Response.error();
+      })
   );
 });
