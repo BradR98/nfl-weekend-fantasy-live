@@ -1,66 +1,47 @@
-const CACHE_NAME = 'weekend-warrior-pwa-v2';
-const APP_SHELL = [
-  './',
-  './index.html',
-  './manifest.webmanifest',
-  './icon.svg',
-  './pwa-192x192.png',
-  './pwa-512x512.png'
-];
+var CACHE_NAME = 'weekend-warrior-pwa-v3';
+var CACHE = CACHE_NAME;
+var ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
+self.addEventListener('install', function (e) {
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(function (c) { return c.addAll(ASSETS); })
+      .then(function () { return self.skipWaiting(); })
+      .catch(function () { return self.skipWaiting(); })
   );
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-          return null;
-        })
-      )
-    ).then(() => self.clients.claim())
+self.addEventListener('activate', function (e) {
+  e.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(
+        keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })
+      );
+    }).then(function () { return self.clients.claim(); })
   );
 });
 
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
+// Network-first with cache: 'no-cache' for same-origin app shell (bypasses GitHub Pages 10-min HTTP cache)
+self.addEventListener('fetch', function (e) {
+  if (e.request.method !== 'GET') return;
+  var url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;
 
-  const url = new URL(request.url);
-
-  // Only handle same-origin requests; let browser handle cross-origin APIs/fonts directly
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  // Network-first with offline cache fallback for app shell & static assets
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        if (request.mode === 'navigate') {
-          const fallbackNav = await caches.match('./index.html') || await caches.match('./');
-          if (fallbackNav) return fallbackNav;
-        }
-        return Response.error();
-      })
+  e.respondWith(
+    fetch(e.request, { cache: 'no-cache' }).then(function (res) {
+      if (res && res.ok) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(e.request).then(function (hit) {
+        return hit || caches.match('./index.html');
+      });
+    })
   );
+});
+
+self.addEventListener('message', function (e) {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
